@@ -8,12 +8,12 @@
   "files": ["extensions"],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sevten/pi-edit-reply.git"
+    "url": "git+https://github.com/Sevten/pi-edit-reply.git"
   },
   "bugs": {
-    "url": "https://github.com/sevten/pi-edit-reply/issues"
+    "url": "https://github.com/Sevten/pi-edit-reply/issues"
   },
-  "homepage": "https://github.com/sevten/pi-edit-reply#readme",
+  "homepage": "https://github.com/Sevten/pi-edit-reply#readme",
   "engines": {
     "node": ">=20"
   },
