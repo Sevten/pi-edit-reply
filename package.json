@@ -1,0 +1,23 @@
+{
+  "name": "@sevten/pi-edit-reply",
+  "version": "0.1.0",
+  "description": "pi extension: edit an AI reply in place by creating an edited branch copy, preserving the original message.",
+  "keywords": ["pi-package", "pi", "extension", "edit-reply"],
+  "license": "MIT",
+  "type": "module",
+  "files": ["extensions"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sevten/pi-edit-reply.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sevten/pi-edit-reply/issues"
+  },
+  "homepage": "https://github.com/sevten/pi-edit-reply#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
