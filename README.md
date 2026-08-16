@@ -1,8 +1,8 @@
 # @sevten/pi-edit-reply
 
-A [pi](https://pi.dev) extension to **edit LLM reply after it's been sent** and keep the conversation going from your corrected version.
+A [pi](https://pi.dev) extension that lets you edit an LLM reply in place by creating an edited copy on a new branch, while preserving the original message.
 
-`/editreply` opens a session tree; pick any LLM reply, edit its text, and the conversation continues from the edit — the original reply stays in the tree in case you want it back.
+`/editreply` opens the session tree; pick any LLM reply, edit its text, and the conversation continues from the edit version — the original reply stays in the tree in case you want it back.
 
 ## Install
 

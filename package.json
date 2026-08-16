@@ -1,7 +1,7 @@
 {
   "name": "@sevten/pi-edit-reply",
-  "version": "0.1.0",
-  "description": "pi extension: edit an AI reply in place by creating an edited branch copy, preserving the original message.",
+  "version": "0.1.1",
+  "description": "A pi agent extension that lets you edit an LLM reply in place by creating an edited copy on a new branch, while preserving the original message.",
   "keywords": ["pi-package", "pi", "pi-extension", "edit-reply", "ai-agent"],
   "license": "MIT",
   "type": "module",
