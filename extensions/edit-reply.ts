@@ -431,6 +431,7 @@ function makeTreeSelector(
 	const treeList = selector.getTreeList() as unknown as {
 		hasTextContent: (c: unknown) => boolean;
 		applyFilter: () => void;
+		extractFullContent: (c: unknown) => string;
 		findNearestVisibleIndex: (entryId: string) => number;
 		selectedIndex: number;
 		lastSelectedId: string | null;
@@ -464,6 +465,27 @@ function makeTreeSelector(
 			}
 		}
 		return false;
+	};
+	// Thinking preview: pi's extractFullContent only reads text blocks, so
+	// thinking-only rows render as "(no content)" and are unidentifiable.
+	// Fall back to the thinking text — this also feeds the row display and
+	// the search index (thinking becomes searchable).
+	const origExtractFullContent = treeList.extractFullContent.bind(treeList);
+	treeList.extractFullContent = (content: unknown) => {
+		const base = origExtractFullContent(content);
+		if (base.trim().length > 0 || !Array.isArray(content)) return base;
+		return content
+			.map((part) =>
+				typeof part === "object" &&
+				part !== null &&
+				(part as { type?: string }).type === "thinking" &&
+				(part as { redacted?: boolean }).redacted !== true &&
+				typeof (part as { thinking?: unknown }).thinking === "string"
+					? (part as { thinking: string }).thinking
+					: "",
+			)
+			.filter((t) => t.length > 0)
+			.join("\n\n");
 	};
 	treeList.applyFilter();
 	// The constructor picked the initial selection while thinking-only rows
