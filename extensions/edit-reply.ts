@@ -1014,9 +1014,9 @@ export default function (pi: ExtensionAPI) {
 
 				// Show only the edited (after) content — a before → after diff of
 				// truncated summaries is unreadable, especially for appends.
-				const reviewLines = pendingOnPath.map((e) => {
+				const reviewLines = pendingOnPath.map((e, i) => {
 					const role = asMessageEntry(e)?.message.role ?? "message";
-					return `${role}: ${editedSummary(pending.get(e.id)!)}`;
+					return `${i + 1}. ${role}: ${editedSummary(pending.get(e.id)!)}`;
 				});
 
 				const items: SelectItem[] = [];
