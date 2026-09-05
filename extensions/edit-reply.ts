@@ -757,6 +757,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.setStatus("editreply", undefined);
 			};
 
+			let switched = false;
 			try {
 				// --- editing loop -------------------------------------------
 				editingLoop: for (;;) {
@@ -998,6 +999,13 @@ export default function (pi: ExtensionAPI) {
 				const { copies, editedCopyIds } = buildCopies(path, firstIdx, endIdx, pending, ids);
 				const copyLines = copies.map((e) => JSON.stringify(e));
 
+				// Clean up on the OLD ctx before switching — pi invalidates the
+				// captured command ctx after switchSession().
+				cleanup();
+				const clearStatus = async (fresh: {
+					ui: { setStatus: (k: string, v: string | undefined) => void };
+				}) => fresh.ui.setStatus("editreply", undefined);
+
 				if (isFork) {
 					const fork = buildForkSession(sessionFile, copies);
 					writeAtomic(fork.file, fork.lines);
@@ -1006,8 +1014,9 @@ export default function (pi: ExtensionAPI) {
 						"info",
 					);
 					// Leaf = last file entry = the end of the copied path.
-					// Do not use `ctx` after this point.
-					await ctx.switchSession(fork.file);
+					// Post-switch work must go through withSession (fresh ctx).
+					await ctx.switchSession(fork.file, { withSession: clearStatus });
+					switched = true;
 					return;
 				}
 
@@ -1020,10 +1029,11 @@ export default function (pi: ExtensionAPI) {
 					`Branch created (${copies.length} entries copied) — switching…`,
 					"info",
 				);
-				await ctx.switchSession(sessionFile);
+				await ctx.switchSession(sessionFile, { withSession: clearStatus });
+				switched = true;
 				return;
 			} finally {
-				cleanup();
+				if (!switched) cleanup();
 			}
 		},
 	});
