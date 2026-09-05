@@ -463,6 +463,7 @@ function makeTreeSelector(
 			) {
 				return true;
 			}
+			if (part.type === "toolCall") return true;
 		}
 		return false;
 	};
@@ -474,7 +475,7 @@ function makeTreeSelector(
 	treeList.extractFullContent = (content: unknown) => {
 		const base = origExtractFullContent(content);
 		if (base.trim().length > 0 || !Array.isArray(content)) return base;
-		return content
+		const thinking = content
 			.map((part) =>
 				typeof part === "object" &&
 				part !== null &&
@@ -486,6 +487,18 @@ function makeTreeSelector(
 			)
 			.filter((t) => t.length > 0)
 			.join("\n\n");
+		if (thinking.length > 0) return thinking;
+		// Tool-call-only rows: name the calls so the row is identifiable.
+		const calls = content
+			.map((part) =>
+				typeof part === "object" &&
+				part !== null &&
+				(part as { type?: string }).type === "toolCall"
+					? (part as { name?: string }).name ?? "tool"
+					: "",
+			)
+			.filter((n) => n.length > 0);
+		return calls.length > 0 ? `tool call: ${calls.join(", ")}` : "";
 	};
 	treeList.applyFilter();
 	// The constructor picked the initial selection while thinking-only rows
@@ -819,7 +832,10 @@ export default function (pi: ExtensionAPI) {
 								!hasThinking(message.message) &&
 								!hasToolCalls(message.message))
 						) {
-							return "Not editable: pick a user or assistant message";
+							if (entry && asMessageEntry(entry)?.message.role === "toolResult") {
+							return "Tool results are not editable — pick the assistant tool-call row above";
+						}
+						return "Not editable: pick a user or assistant message";
 						}
 						if (!pathIds.has(entryId)) {
 							return "Off the active path — /tree to that branch first";
