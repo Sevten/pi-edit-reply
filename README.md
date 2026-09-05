@@ -2,7 +2,7 @@
 
 A [pi](https://pi.dev) extension for rewriting AI history:
 
-- **`/edittree`** — batch-edit LLM replies (text and/or their reasoning). Edits are held in memory until you explicitly save, then committed either as an **in-file branch** or as a **forked new session**. The original conversation is always preserved. `Enter` navigates to the picked row (any branch — pi may ask about a branch summary), `Ctrl+E` opens the editor for the selected row, `Ctrl+S` opens the save dialog when edits are pending.
+- **`/edittree`** — batch-edit LLM replies (text and/or their reasoning). Edits are held in memory until you explicitly save, then committed either as an **in-file branch** or as a **forked new session**. The original conversation is always preserved. `Ctrl+S` opens the save dialog when edits are pending.
 
 ## Install
 

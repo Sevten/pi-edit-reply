@@ -729,11 +729,7 @@ class CommitDialog extends Container {
 // Command
 // ---------------------------------------------------------------------------
 
-type TreeResult =
-	| { kind: "edit"; entryId: string }
-	| { kind: "navigate"; entryId: string }
-	| { kind: "commit" }
-	| undefined;
+type TreeResult = { kind: "edit"; entryId: string } | { kind: "commit" } | undefined;
 type CommitChoice =
 	| "branch-tail"
 	| "branch-cut"
@@ -744,7 +740,7 @@ type CommitChoice =
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("edittree", {
 		description:
-			"Navigate and edit the session tree — a /tree superset that shows thinking rows; edits commit as a branch or a forked new session",
+			"Edit conversation messages (text/thinking): batch edits, then commit as a branch or a forked new session",
 		handler: async (_args, ctx) => {
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("/edittree: agent is busy, wait for it to finish", "warning");
@@ -787,8 +783,8 @@ export default function (pi: ExtensionAPI) {
 						return;
 					}
 
-					// Shared guard for Ctrl+E: only on-path user/assistant messages
-					// with at least one editable part can be opened in the editor.
+					// Only on-path user/assistant messages with at least one
+					// editable part can be opened in the editor.
 					const editGuard = (entryId: string): string | null => {
 						const entry = entries.find((e) => e.id === entryId);
 						const message = entry ? asMessageEntry(entry) : null;
@@ -803,36 +799,43 @@ export default function (pi: ExtensionAPI) {
 							return "Not editable: pick a user or assistant message";
 						}
 						if (!pathIds.has(entryId)) {
-							return "Off the active path — Enter navigates there first";
+							return "Off the active path — /tree to that branch first";
 						}
 						return null;
 					};
 
 					const result = await ctx.ui.custom<TreeResult>(
 						(tui, theme, _keybindings, done) => {
-							// Enter keeps the native /tree semantics: navigate to the
-							// picked row (any entry, any branch). pi itself asks about
-							// a branch summary when relevant (no summarize override).
+							// Enter = edit the picked row (editGuard keeps the tree open
+							// with a flash when the row is not editable).
 							const selector = makeTreeSelector(
 								tree,
 								ctx.sessionManager.getLeafId(),
 								tui.terminal.rows,
-								(entryId) => done({ kind: "navigate", entryId }),
+								(entryId) => {
+									const problem = editGuard(entryId);
+									if (problem) {
+										flash(problem);
+										return; // keep the tree open
+									}
+									done({ kind: "edit", entryId });
+								},
 								() => done(pending.size > 0 ? { kind: "commit" } : undefined),
 								lastSelectedId,
 							);
+							// Ctrl+S opens the save dialog directly (same as Esc with
+							// pending edits), so saving has a dedicated, visible key.
 							const wrapper = new Container();
 							wrapper.addChild(selector);
-							wrapper.addChild(
-								new Text(
-									theme.fg(
-										"dim",
-										"enter navigate  ·  ctrl+e edit  ·  ctrl+s save  ·  esc exit",
+							if (pending.size > 0) {
+								wrapper.addChild(
+									new Text(
+										theme.fg("dim", "Ctrl+S save  ·  Esc exit"),
+										1,
+										0,
 									),
-									1,
-									0,
-								),
-							);
+								);
+							}
 							(wrapper as unknown as { handleInput: (data: string) => void }).handleInput = (
 								data: string,
 							) => {
@@ -840,27 +843,9 @@ export default function (pi: ExtensionAPI) {
 									done({ kind: "commit" });
 									return;
 								}
-								if (data === "\u0005") {
-									// Ctrl+E — edit the selected row.
-									const list = selector.getTreeList() as unknown as {
-										lastSelectedId: string | null;
-									};
-									const entryId = list.lastSelectedId;
-									if (!entryId) {
-										flash("Nothing selected");
-										return;
-									}
-									const problem = editGuard(entryId);
-									if (problem) {
-										flash(problem);
-										return; // keep the tree open
-									}
-									done({ kind: "edit", entryId });
-									return;
-								}
 								selector.handleInput(data);
 							};
-							Object.defineProperty(wrapper, "focused", {
+						Object.defineProperty(wrapper, "focused", {
 								get: () => selector.focused,
 								set: (value: boolean) => {
 									selector.focused = value;
@@ -872,30 +857,6 @@ export default function (pi: ExtensionAPI) {
 
 					if (result === undefined) return; // tree Esc with no pending edits
 					if (result.kind === "commit") break editingLoop;
-
-					if (result.kind === "navigate") {
-						// Draft safety: pending edits stranded on another branch can
-						// never be committed once the leaf moves away.
-						const newPathIds = new Set(
-							buildPath(entries, result.entryId).map((e) => e.id),
-						);
-						const stranded = [...pending.keys()].filter(
-							(id) => !newPathIds.has(id),
-						);
-						if (stranded.length > 0) {
-							const ok = await ctx.ui.confirm(
-								"Navigating away",
-								`${stranded.length} pending edit${stranded.length === 1 ? "" : "s"} ${
-									stranded.length === 1 ? "is" : "are"
-								} on another branch and will become uncommittable. Navigate anyway?`,
-							);
-							if (!ok) continue; // stay in the tree
-							pending.clear();
-							setPendingStatus();
-						}
-						await ctx.navigateTree(result.entryId);
-						continue; // re-open the tree on the (possibly new) path
-					}
 
 					const entry = entries.find((e) => e.id === result.entryId);
 					const message = entry ? asMessageEntry(entry) : null;
