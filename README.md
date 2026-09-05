@@ -16,7 +16,7 @@ pi install npm:@sevten/pi-edit-reply
 2. A **session tree** opens, listing all messages across every branch of the current conversation (same navigation as the built-in `/tree`):
    - Rows whose only content is reasoning stay visible (pi's own `/tree` hides them), tagged `[thinking]` with a **preview of the thinking text**; thinking text is also searchable via the tree's type-to-search.
    - Rows with unsaved edits are tagged `[edited]`, and the footer shows a pending-edits counter.
-   - `Enter` on a message opens the editor — assistant replies (text, thinking, or tool calls) and your own **user messages** alike.
+   - `Enter` on a message opens the editor — assistant replies and your own **user messages** alike. Messages that only issue tool calls are listed for orientation but not editable (the calls are kept as-is); tool-call messages with reasoning or text are editable normally.
    - Selecting anything else (tool results, non-message entries) shows a transient hint in the footer status bar and leaves the tree open.
    - Only messages on the **current active path** can be edited; for anything else, use the native `/tree` to move to that branch first (an edited thinking message sits at the fork visible from its tool-call row).
 3. Edit the content. Messages containing reasoning are prefilled as labeled sections:
@@ -49,7 +49,7 @@ U1 ─┬─ A1 → U2 → A2 → U3 → A3          (original, untouched)
 
 ## Notes
 
-- **Tool calls survive**: edited copies keep their tool-call parts, so copied `toolResult` entries stay paired and the context remains valid. Clearing thinking and reply from a tool-call message is a valid edit ("keep the call, drop the prose"); clearing both from a plain message is rejected as "nothing left".
+- **Tool calls survive**: edited copies keep their tool-call parts, so copied `toolResult` entries stay paired and the context remains valid. Clearing thinking and reply from a tool-call message is a valid edit ("keep the call, drop the prose"); clearing both from a plain message is rejected as "nothing left". Tool-call-only messages and tool results are never editable.
 - **Thinking signatures**: editing the thinking text invalidates the provider's cryptographic signature over it, so edited copies store the signature cleared. pi's Anthropic provider then degrades the unsigned block gracefully instead of failing signature verification. Verbatim-copied messages keep their signatures. Redacted thinking blocks (encrypted by safety filters) are never editable and pass through untouched.
 - **Branch navigation**: after editing you are on the new path; to move back (or anywhere else), use pi's native `/tree` — picking any entry navigates the leaf there within the same session file (no fork, no summary prompt). Editing pre-tool thinking forks at the thinking message, which `/tree` shows via the following tool-call row.
 - **Idle only**: refused while the agent is streaming or compacting.
