@@ -463,7 +463,6 @@ function makeTreeSelector(
 			) {
 				return true;
 			}
-			if (part.type === "toolCall") return true;
 		}
 		return false;
 	};
@@ -488,17 +487,7 @@ function makeTreeSelector(
 			.filter((t) => t.length > 0)
 			.join("\n\n");
 		if (thinking.length > 0) return thinking;
-		// Tool-call-only rows: name the calls so the row is identifiable.
-		const calls = content
-			.map((part) =>
-				typeof part === "object" &&
-				part !== null &&
-				(part as { type?: string }).type === "toolCall"
-					? (part as { name?: string }).name ?? "tool"
-					: "",
-			)
-			.filter((n) => n.length > 0);
-		return calls.length > 0 ? `tool call: ${calls.join(", ")}` : "";
+		return "";
 	};
 	treeList.applyFilter();
 	// The constructor picked the initial selection while thinking-only rows
@@ -836,16 +825,6 @@ export default function (pi: ExtensionAPI) {
 								return "Tool results are not editable — pick the assistant tool-call row above";
 							}
 							return "Not editable: pick a user or assistant message";
-						}
-						// A message that only issues tool calls has no prose to edit;
-						// its row exists for tree orientation. The calls themselves are
-						// kept verbatim (they pair with tool results).
-						if (
-							!hasText(message.message) &&
-							!hasThinking(message.message) &&
-							hasToolCalls(message.message)
-						) {
-							return "Tool calls only, nothing editable — the calls are kept as-is";
 						}
 						if (!pathIds.has(entryId)) {
 							return "Off the active path — /tree to that branch first";
