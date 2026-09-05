@@ -1,5 +1,5 @@
 /**
- * /treeedit — batch-edit conversation messages (text and/or thinking), then
+ * /edittree — batch-edit conversation messages (text and/or thinking), then
  * commit the
  * edits as either an in-file branch or a forked new session.
  *
@@ -621,7 +621,7 @@ export function makeLabelEntries(
 }
 
 function writeAtomic(file: string, lines: string[]): void {
-	const tmp = `${file}.treeedit.tmp`;
+	const tmp = `${file}.edittree.tmp`;
 	writeFileSync(tmp, [...lines, ""].join("\n"));
 	renameSync(tmp, file);
 }
@@ -742,17 +742,17 @@ type CommitChoice =
 	| "discard";
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("treeedit", {
+	pi.registerCommand("edittree", {
 		description:
 			"Navigate and edit the session tree — a /tree superset that shows thinking rows; edits commit as a branch or a forked new session",
 		handler: async (_args, ctx) => {
 			if (!ctx.isIdle()) {
-				ctx.ui.notify("/treeedit: agent is busy, wait for it to finish", "warning");
+				ctx.ui.notify("/edittree: agent is busy, wait for it to finish", "warning");
 				return;
 			}
 			const sessionFile = ctx.sessionManager.getSessionFile();
 			if (typeof sessionFile !== "string") {
-				ctx.ui.notify("/treeedit: this session is not persisted to a file", "warning");
+				ctx.ui.notify("/edittree: this session is not persisted to a file", "warning");
 				return;
 			}
 
@@ -763,15 +763,15 @@ export default function (pi: ExtensionAPI) {
 				pending.size > 0
 					? `${pending.size} pending edit${pending.size === 1 ? "" : "s"} — Esc opens save options`
 					: undefined;
-			const setPendingStatus = () => ctx.ui.setStatus("treeedit", pendingStatus());
+			const setPendingStatus = () => ctx.ui.setStatus("edittree", pendingStatus());
 			const flash = (msg: string) => {
-				ctx.ui.setStatus("treeedit", msg);
+				ctx.ui.setStatus("edittree", msg);
 				if (statusTimer) clearTimeout(statusTimer);
-				statusTimer = setTimeout(() => ctx.ui.setStatus("treeedit", pendingStatus()), 3000);
+				statusTimer = setTimeout(() => ctx.ui.setStatus("edittree", pendingStatus()), 3000);
 			};
 			const cleanup = () => {
 				if (statusTimer) clearTimeout(statusTimer);
-				ctx.ui.setStatus("treeedit", undefined);
+				ctx.ui.setStatus("edittree", undefined);
 			};
 
 			let switched = false;
@@ -783,7 +783,7 @@ export default function (pi: ExtensionAPI) {
 					const pathIds = new Set(path.map((e) => e.id));
 					const tree = withLabels(ctx.sessionManager.getTree(), new Set(pending.keys()));
 					if (tree.length === 0) {
-						ctx.ui.notify("/treeedit: session has no entries", "warning");
+						ctx.ui.notify("/edittree: session has no entries", "warning");
 						return;
 					}
 
@@ -1067,7 +1067,7 @@ export default function (pi: ExtensionAPI) {
 				cleanup();
 				const clearStatus = async (fresh: {
 					ui: { setStatus: (k: string, v: string | undefined) => void };
-				}) => fresh.ui.setStatus("treeedit", undefined);
+				}) => fresh.ui.setStatus("edittree", undefined);
 
 				if (isFork) {
 					const fork = buildForkSession(sessionFile, copies);
