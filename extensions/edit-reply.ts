@@ -143,22 +143,34 @@ function withLabels(
 	nodes: SessionTreeNode[],
 	pendingIds: ReadonlySet<string>,
 ): SessionTreeNode[] {
-	return nodes.map((node) => {
-		const entry = node.entry;
-		let label = node.label;
+	// Iterative on purpose: long sessions are effectively linear trees, so a
+	// recursive walk would overflow the call stack (depth = message count,
+	// amplified by every branch commit copying the path).
+	const clone = (node: SessionTreeNode): SessionTreeNode => ({
+		entry: node.entry,
+		label: node.label,
+		labelTimestamp: node.labelTimestamp,
+		children: [],
+	});
+	const result = nodes.map(clone);
+	const work: Array<{ src: SessionTreeNode; dst: SessionTreeNode }> = nodes.map(
+		(node, i) => ({ src: node, dst: result[i] }),
+	);
+	while (work.length > 0) {
+		const { src, dst } = work.pop()!;
+		const entry = src.entry;
 		const msg =
 			entry.type === "message" ? (entry as SessionMessageEntry).message : null;
 		if (msg && (msg.role === "assistant" || msg.role === "user")) {
-			if (pendingIds.has(entry.id)) label = "edited";
-			else if (msg.role === "assistant" && hasThinking(msg)) label = "thinking";
+			if (pendingIds.has(entry.id)) dst.label = "edited";
+			else if (msg.role === "assistant" && hasThinking(msg)) dst.label = "thinking";
 		}
-		return {
-			entry,
-			label,
-			labelTimestamp: node.labelTimestamp,
-			children: withLabels(node.children, pendingIds),
-		};
-	});
+		dst.children = src.children.map(clone);
+		for (let i = src.children.length - 1; i >= 0; i--) {
+			work.push({ src: src.children[i], dst: dst.children[i] });
+		}
+	}
+	return result;
 }
 
 function newId(existing: Set<string>): string {
