@@ -747,6 +747,16 @@ class CommitDialog extends Container {
 		};
 		this.list = new SelectList(items, Math.min(items.length, 8), listTheme);
 		this.list.onSelect = (item) => done(item.value as CommitChoice);
+		// tui.select.cancel fires for BOTH escape and ctrl+c; intercept ctrl+c
+		// first so it can quit outright while escape only steps back.
+		const listInput = this.list.handleInput.bind(this.list);
+		this.list.handleInput = (data: string) => {
+			if (data === "\u0003") {
+				done("abort");
+				return;
+			}
+			listInput(data);
+		};
 		this.list.onCancel = () => done(undefined);
 		this.addChild(this.list);
 		this.addChild(new Spacer(1));
@@ -754,7 +764,7 @@ class CommitDialog extends Container {
 			new Text(
 				theme.fg(
 					"dim",
-					`${keyHint("tui.select.confirm", "confirm")}  ${keyHint("tui.select.cancel", "back to editing")}`,
+					`${keyHint("tui.select.confirm", "confirm")}  ${keyHint("tui.select.cancel", "back to editing")}  ctrl+c quit`,
 				),
 				1,
 				0,
@@ -780,6 +790,7 @@ class CommitDialog extends Container {
 
 type TreeResult = { kind: "edit"; entryId: string } | { kind: "commit" } | undefined;
 type CommitChoice =
+	| "abort"
 	| "branch-tail"
 	| "branch-cut"
 	| "fork-tail"
@@ -1071,11 +1082,17 @@ export default function (pi: ExtensionAPI) {
 				);
 				// Escape goes back to editing; Discard clears the pending set and
 				// re-opens the tree — neither exits to the main conversation.
+				// Ctrl+C abandons everything and quits to the main conversation.
 				if (choice === undefined) continue sessionEdit;
 				if (choice === "discard") {
 					pending.clear();
 					setPendingStatus();
 					continue sessionEdit;
+				}
+				if (choice === "abort") {
+					flash("Edits abandoned");
+					cleanup();
+					return;
 				}
 
 				const keepTail = choice === "branch-tail" || choice === "fork-tail";
