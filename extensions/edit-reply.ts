@@ -797,6 +797,8 @@ export default function (pi: ExtensionAPI) {
 
 			let switched = false;
 			try {
+				// Outer loop: Escape / Discard in the save dialog come back here.
+				sessionEdit: for (;;) {
 				// --- editing loop -------------------------------------------
 				editingLoop: for (;;) {
 					const entries = readSessionFile(sessionFile).entries;
@@ -983,32 +985,34 @@ export default function (pi: ExtensionAPI) {
 				const endLeafIdx = path.length - 1;
 				const hasTail = lastIdx < endLeafIdx;
 
-				const reviewLines = pendingOnPath.map(
-					(e) =>
-						`${messageSummary(asMessageEntry(e)!.message)}  →  ${editedSummary(pending.get(e.id)!)}`,
-				);
+				// Show only the edited (after) content — a before → after diff of
+				// truncated summaries is unreadable, especially for appends.
+				const reviewLines = pendingOnPath.map((e) => {
+					const role = asMessageEntry(e)?.message.role ?? "message";
+					return `${role}: ${editedSummary(pending.get(e.id)!)}`;
+				});
 
 				const items: SelectItem[] = [];
 				if (hasTail) {
 					items.push({
 						value: "branch-tail",
-						label: "Branch · keep subsequent conversation",
-						description: "Same session file; copies from the first edit through the end; originals stay",
+						label: "Branch · keep tail",
+						description: "Same file; copies from the first edit to the end; originals stay",
 					});
 					items.push({
 						value: "branch-cut",
-						label: "Branch · start fresh from last edit",
-						description: "Same session file; copies up to the last edited message",
+						label: "Branch · cut tail",
+						description: "Same file; copies up to the last edited message",
 					});
 					items.push({
 						value: "fork-tail",
-						label: "New session · keep subsequent conversation",
-						description: "Fork to a new session file with the full edited conversation",
+						label: "New session · keep tail",
+						description: "New file with the full edited conversation",
 					});
 					items.push({
 						value: "fork-cut",
-						label: "New session · start fresh from last edit",
-						description: "Fork to a new session file, up to the last edited message",
+						label: "New session · cut tail",
+						description: "New file, up to the last edited message",
 					});
 				} else {
 					items.push({
@@ -1038,9 +1042,13 @@ export default function (pi: ExtensionAPI) {
 							done,
 						),
 				);
-				if (choice === undefined || choice === "discard") {
-					cleanup();
-					return;
+				// Escape goes back to editing; Discard clears the pending set and
+				// re-opens the tree — neither exits to the main conversation.
+				if (choice === undefined) continue sessionEdit;
+				if (choice === "discard") {
+					pending.clear();
+					setPendingStatus();
+					continue sessionEdit;
 				}
 
 				const keepTail = choice === "branch-tail" || choice === "fork-tail";
@@ -1084,6 +1092,7 @@ export default function (pi: ExtensionAPI) {
 				await ctx.switchSession(sessionFile, { withSession: clearStatus });
 				switched = true;
 				return;
+			}
 			} finally {
 				if (!switched) cleanup();
 			}
