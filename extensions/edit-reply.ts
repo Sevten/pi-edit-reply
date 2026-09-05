@@ -138,11 +138,13 @@ function hasToolCalls(message: SessionMessageEntry["message"]): boolean {
 /**
  * Deep-clone the tree and tag messages: pending edits win (`edited`), then
  * thinking (`thinking`, so tool-call-only replies with reasoning stay
- * recognizable — their preview text is empty).
+ * recognizable — their preview text is empty). Pending messages also get
+ * their EDITED content swapped into the clone, so the row preview (and
+ * search) reflects what will be committed, not the stale original.
  */
 function withLabels(
 	nodes: SessionTreeNode[],
-	pendingIds: ReadonlySet<string>,
+	pending: ReadonlyMap<string, string>,
 ): SessionTreeNode[] {
 	// Iterative on purpose: long sessions are effectively linear trees, so a
 	// recursive walk would overflow the call stack (depth = message count,
@@ -160,10 +162,22 @@ function withLabels(
 	while (work.length > 0) {
 		const { src, dst } = work.pop()!;
 		const entry = src.entry;
-		const msg =
+		let msg =
 			entry.type === "message" ? (entry as SessionMessageEntry).message : null;
+		const staged = pending.get(entry.id);
+		if (msg && staged !== undefined) {
+			// Swap in the edited content so the row preview matches the draft.
+			msg = {
+				...msg,
+				content: buildEditedContent(msg, staged),
+			} as typeof msg;
+			(dst as { entry: unknown }).entry = {
+				...entry,
+				message: msg,
+			};
+		}
 		if (msg && (msg.role === "assistant" || msg.role === "user")) {
-			if (pendingIds.has(entry.id)) dst.label = "edited";
+			if (staged !== undefined) dst.label = "edited";
 			else if (msg.role === "assistant" && hasThinking(msg) && !hasText(msg))
 				dst.label = "thinking";
 		}
@@ -201,26 +215,30 @@ export function parseEdited(
 ): { thinking: string | null; reply: string | null } {
 	const norm = (s: string | null) =>
 		s !== null && s.trim().length > 0 ? s.trim() : null;
-	const thinkingAt = edited.indexOf(THINKING_HEADER);
-	const replyAt = edited.indexOf(REPLY_HEADER);
-	if (thinkingAt === -1) {
-		// No thinking section. A lone [reply] header at the very start means
+	// Headers are only recognized as WHOLE lines. A "[thinking]" or
+	// "[reply]" appearing mid-prose is content, not a section marker — this
+	// keeps prose that merely mentions the tags from silently re-splitting
+	// the message into the wrong parts.
+	const lines = edited.split("\n");
+	const thinkIdx = lines.indexOf(THINKING_HEADER);
+	const replyIdx = lines.indexOf(REPLY_HEADER);
+	if (thinkIdx === -1) {
+		// No thinking section. A [reply] header as the very first line means
 		// the user deleted the thinking section but kept the reply one; plain
-		// text (no thinking existed) is the whole buffer.
-		if (replyAt === 0) {
+		// text (no headers at all) is the whole buffer.
+		if (replyIdx === 0) {
 			return {
 				thinking: null,
-				reply: norm(edited.slice(replyAt + REPLY_HEADER.length)),
+				reply: norm(lines.slice(1).join("\n")),
 			};
 		}
 		return { thinking: null, reply: norm(edited) };
 	}
-
 	const thinking =
-		replyAt === -1
-			? edited.slice(thinkingAt + THINKING_HEADER.length)
-			: edited.slice(thinkingAt + THINKING_HEADER.length, replyAt);
-	const reply = replyAt === -1 ? null : edited.slice(replyAt + REPLY_HEADER.length);
+		replyIdx > thinkIdx
+			? lines.slice(thinkIdx + 1, replyIdx).join("\n")
+			: lines.slice(thinkIdx + 1).join("\n");
+	const reply = replyIdx > thinkIdx ? lines.slice(replyIdx + 1).join("\n") : null;
 	return {
 		thinking: norm(thinking),
 		reply: norm(reply),
@@ -358,7 +376,7 @@ export function openTallEditor(
 	// from an onSubmit callback.
 	const container = new Container();
 	container.addChild(new DynamicBorder());
-	container.addChild(new Text(keyHint("tui.select.cancel", "keep draft, back"), 1, 0));
+	container.addChild(new Text(keyHint("tui.select.cancel", "discard, back"), 1, 0));
 	container.addChild(new Text(title, 1, 0));
 	container.addChild(new DynamicBorder());
 	container.addChild(editor);
@@ -366,8 +384,8 @@ export function openTallEditor(
 	container.addChild(
 		new Text(
 			"enter newline  " +
-				keyHint("tui.select.cancel", "keep draft, back") +
-				"  ctrl+s back",
+				keyHint("tui.select.cancel", "discard, back") +
+				"  ctrl+s stage, back",
 			1,
 			0,
 		),
@@ -378,14 +396,20 @@ export function openTallEditor(
 	// Route input. Keys are deliberately unlike pi's default editor:
 	// - Enter inserts a newline so multi-line text can be typed naturally
 	//   (Shift+Enter/Ctrl+J also reach the editor's own newline handling)
-	// - Esc/Ctrl+C/Ctrl+S keep the draft and return to the tree, so several
-	//   messages can be draft-edited in a row; the save dialog is only ever
-	//   opened from the tree (Esc with pending edits, or Ctrl+S there)
+	// - Esc/Ctrl+C discard the buffer and return to the tree; only Ctrl+S
+	//   stages the edit (pending set), keeping originals untouched until
+	//   the save dialog commits them
 	(container as unknown as { handleInput: (data: string) => void }).handleInput = (
 		data: string,
 	) => {
-		if (data === "\u0013" || keybindings.matches(data, "tui.select.cancel")) {
+		if (data === "\u0013") {
+			// Ctrl+S: stage the edit and return to the tree.
 			done(editor.getText());
+			return;
+		}
+		if (keybindings.matches(data, "tui.select.cancel")) {
+			// Esc/Ctrl+C: leave without staging.
+			done(undefined);
 			return;
 		}
 		if (data === "\r") {
@@ -804,7 +828,7 @@ export default function (pi: ExtensionAPI) {
 					const entries = readSessionFile(sessionFile).entries;
 					const path = buildPath(entries, ctx.sessionManager.getLeafId() ?? "");
 					const pathIds = new Set(path.map((e) => e.id));
-					const tree = withLabels(ctx.sessionManager.getTree(), new Set(pending.keys()));
+					const tree = withLabels(ctx.sessionManager.getTree(), pending);
 					if (tree.length === 0) {
 						ctx.ui.notify("/edittree: session has no entries", "warning");
 						return;
@@ -940,7 +964,10 @@ export default function (pi: ExtensionAPI) {
 							})
 						: await ctx.ui.custom<string | undefined>(factory);
 
-					if (edited === undefined) continue; // cancelled -> back to the tree
+					if (edited === undefined) {
+						flash("Edit discarded — the message is unchanged");
+						continue; // back to the tree
+					}
 					if (edited === prefill) continue; // unchanged -> back to the tree
 					if (edited === originalPrefill) {
 						pending.delete(message.id); // reverted to the original text
