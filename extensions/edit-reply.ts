@@ -328,7 +328,7 @@ export function openTallEditor(
 	title: string,
 	prefill: string,
 	visibleLines: number,
-	done: (value: string | undefined) => void,
+	done: (value: EditorDone | undefined) => void,
 ) {
 	// The factory hands us the interactive Theme, but Editor expects an
 	// EditorTheme ({ borderColor, selectList }). getEditorTheme() is not
@@ -339,11 +339,9 @@ export function openTallEditor(
 	};
 	const editor = new TallEditor(tui, editorTheme, visibleLines);
 	editor.setText(prefill);
-	// NOTE: use the argument — Editor.submitValue() resets its internal state
-	// BEFORE firing onSubmit, so editor.getText() would already be "" here.
-	editor.onSubmit = (text) => {
-		done(text);
-	};
+	// NOTE: text flows through `done` below — Editor.submitValue() resets its
+	// internal state BEFORE firing onSubmit, so getText() must not be read
+	// from an onSubmit callback.
 	const container = new Container();
 	container.addChild(new DynamicBorder());
 	container.addChild(new Text(keyHint("tui.select.cancel", "keep draft, back"), 1, 0));
@@ -353,11 +351,9 @@ export function openTallEditor(
 	container.addChild(new Spacer(1));
 	container.addChild(
 		new Text(
-			keyHint("tui.select.confirm", "submit") +
-				"  " +
-				keyHint("tui.input.newLine", "newline") +
-				"  " +
-				keyHint("tui.select.cancel", "keep draft, back"),
+			"enter newline  " +
+				keyHint("tui.select.cancel", "keep draft, back") +
+				"  ctrl+s save",
 			1,
 			0,
 		),
@@ -365,14 +361,25 @@ export function openTallEditor(
 	container.addChild(new Spacer(1));
 	container.addChild(new DynamicBorder());
 
-	// Route input: Esc/Ctrl+C closes the editor but KEEPS the draft (the
-	// handler records any changed text as a pending edit), everything else
-	// goes to the editor.
+	// Route input. Keys are deliberately unlike pi's default editor:
+	// - Enter inserts a newline so multi-line text can be typed naturally
+	//   (Shift+Enter/Ctrl+J also reach the editor's own newline handling)
+	// - Esc/Ctrl+C keeps the draft and returns to the tree
+	// - Ctrl+S records the draft and opens the save dialog directly
 	(container as unknown as { handleInput: (data: string) => void }).handleInput = (
 		data: string,
 	) => {
+		if (data === "\u0013") {
+			done({ text: editor.getText(), save: true });
+			return;
+		}
 		if (keybindings.matches(data, "tui.select.cancel")) {
-			done(editor.getText());
+			done({ text: editor.getText() });
+			return;
+		}
+		if (data === "\r") {
+			// Bare Enter: newline instead of submit.
+			(editor as unknown as { addNewLine: () => void }).addNewLine();
 			return;
 		}
 		editor.handleInput(data);
@@ -713,6 +720,7 @@ class CommitDialog extends Container {
 // ---------------------------------------------------------------------------
 
 type TreeResult = { kind: "edit"; entryId: string } | { kind: "commit" } | undefined;
+type EditorDone = { text: string; save?: boolean } | undefined;
 type CommitChoice =
 	| "branch-tail"
 	| "branch-cut"
@@ -858,34 +866,40 @@ export default function (pi: ExtensionAPI) {
 						tui: TUI,
 						theme: Theme,
 						keybindings: KeybindingsManager,
-						done: (value: string | undefined) => void,
+						done: (value: EditorDone) => void,
 					) =>
 						openTallEditor(
 							tui,
 							theme,
 							keybindings,
 							fullscreen
-								? "Edit AI reply (fullscreen, Esc to cancel):"
+								? "Edit AI reply (fullscreen):"
 								: "Edit AI reply:",
 							prefill,
 							maxVisibleLines,
 							done,
 						);
-					const edited = fullscreen
-						? await ctx.ui.custom<string | undefined>(factory, {
+					const editorResult = fullscreen
+						? await ctx.ui.custom<EditorDone>(factory, {
 								overlay: true,
 								overlayOptions: {
 									anchor: "top-left",
 									width: "100%",
 								},
 							})
-						: await ctx.ui.custom<string | undefined>(factory);
+						: await ctx.ui.custom<EditorDone>(factory);
 
-					if (edited === undefined) continue; // cancelled -> back to the tree
-					if (edited === prefill) continue; // unchanged -> back to the tree
+					if (editorResult === undefined)
+						continue; // cancelled -> back to the tree
+					const edited = editorResult.text;
+					if (edited === prefill) {
+						if (editorResult.save) break editingLoop; // save existing edits
+						continue; // unchanged -> back to the tree
+					}
 					if (edited === originalPrefill) {
 						pending.delete(message.id); // reverted to the original text
 						flash("Edit reverted");
+						if (editorResult.save) break editingLoop;
 						continue;
 					}
 					const { thinking, reply } = parseEdited(edited);
@@ -897,11 +911,13 @@ export default function (pi: ExtensionAPI) {
 						// Tool calls survive on the copy, so a message that still has
 						// them is a valid edit ("clear the reply, keep the call").
 						flash("Nothing left after editing — edit not recorded");
+						if (editorResult.save) break editingLoop;
 						continue;
 					}
 					pending.set(message.id, edited);
 					setPendingStatus();
 					flash("Draft kept (not written yet) — re-open to continue, Ctrl+S to save");
+					if (editorResult.save) break editingLoop; // go straight to the save dialog
 				}
 
 				// --- commit phase -------------------------------------------
