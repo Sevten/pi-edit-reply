@@ -164,7 +164,8 @@ function withLabels(
 			entry.type === "message" ? (entry as SessionMessageEntry).message : null;
 		if (msg && (msg.role === "assistant" || msg.role === "user")) {
 			if (pendingIds.has(entry.id)) dst.label = "edited";
-			else if (msg.role === "assistant" && hasThinking(msg)) dst.label = "thinking";
+			else if (msg.role === "assistant" && hasThinking(msg) && !hasText(msg))
+				dst.label = "thinking";
 		}
 		dst.children = src.children.map(clone);
 		for (let i = src.children.length - 1; i >= 0; i--) {
