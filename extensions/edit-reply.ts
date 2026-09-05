@@ -135,9 +135,9 @@ function hasToolCalls(message: SessionMessageEntry["message"]): boolean {
 }
 
 /**
- * Deep-clone the tree and tag assistant messages: pending edits win
- * (`edited`), then thinking (`thinking`, so tool-call-only replies with
- * reasoning stay recognizable — their preview text is empty).
+ * Deep-clone the tree and tag messages: pending edits win (`edited`), then
+ * thinking (`thinking`, so tool-call-only replies with reasoning stay
+ * recognizable — their preview text is empty).
  */
 function withLabels(
 	nodes: SessionTreeNode[],
@@ -146,9 +146,11 @@ function withLabels(
 	return nodes.map((node) => {
 		const entry = node.entry;
 		let label = node.label;
-		if (entry.type === "message" && entry.message.role === "assistant") {
+		const msg =
+			entry.type === "message" ? (entry as SessionMessageEntry).message : null;
+		if (msg && (msg.role === "assistant" || msg.role === "user")) {
 			if (pendingIds.has(entry.id)) label = "edited";
-			else if (hasThinking(entry.message)) label = "thinking";
+			else if (msg.role === "assistant" && hasThinking(msg)) label = "thinking";
 		}
 		return {
 			entry,
@@ -774,12 +776,13 @@ export default function (pi: ExtensionAPI) {
 									const message = entry ? asMessageEntry(entry) : null;
 									if (
 										!message ||
-										message.message.role !== "assistant" ||
+										(message.message.role !== "assistant" &&
+											message.message.role !== "user") ||
 										(!hasText(message.message) &&
 											!hasThinking(message.message) &&
 											!hasToolCalls(message.message))
 									) {
-										flash("Not editable: pick an assistant message ([thinking] rows have reasoning)");
+										flash("Not editable: pick a user or assistant message");
 										return; // keep the tree open
 									}
 									if (!pathIds.has(entryId)) {
