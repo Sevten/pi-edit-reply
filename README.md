@@ -13,11 +13,13 @@ pi install npm:@sevten/pi-edit-reply
 ## Usage
 
 1. Type `/edittree` (only works while the agent isn't running).
-2. A **session tree** opens, listing all messages across every branch of the current conversation (same navigation as the built-in `/tree`). Assistant replies that contain reasoning are tagged with a `[thinking]` marker so they are easy to spot — including tool-call rounds whose text is empty (pi's own `/tree` hides those rows; this editor shows them). Rows with unsaved edits are tagged `[edited]`, and the footer shows a pending-edits counter.
-   - Selecting an LLM reply (text, thinking, or tool calls) opens the editor.
-   - Selecting anything else (your own messages, tool results) shows a transient hint in the footer status bar and leaves the tree open.
-   - Only replies on the **current active path** can be edited; for anything else, use the native `/tree` to move to that branch first (an edited thinking message sits at the fork visible from its tool-call row).
-3. Edit the content. Messages are prefilled as labeled sections whenever they contain reasoning:
+2. A **session tree** opens, listing all messages across every branch of the current conversation (same navigation as the built-in `/tree`):
+   - Rows whose only content is reasoning stay visible (pi's own `/tree` hides them), tagged `[thinking]` with a **preview of the thinking text**; thinking text is also searchable via the tree's type-to-search.
+   - Rows with unsaved edits are tagged `[edited]`, and the footer shows a pending-edits counter.
+   - `Enter` on a message opens the editor — assistant replies (text, thinking, or tool calls) and your own **user messages** alike.
+   - Selecting anything else (tool results, non-message entries) shows a transient hint in the footer status bar and leaves the tree open.
+   - Only messages on the **current active path** can be edited; for anything else, use the native `/tree` to move to that branch first (an edited thinking message sits at the fork visible from its tool-call row).
+3. Edit the content. Messages containing reasoning are prefilled as labeled sections:
 
    ```
    [thinking]
@@ -27,7 +29,7 @@ pi install npm:@sevten/pi-edit-reply
    …the visible answer…
    ```
 
-   Returning to the tree keeps the edited row selected, so you can go straight back in. Edit either section (or both); deleting a section removes that part of the message. User messages can be edited the same way — the editor shows their plain text and the same save flow applies. Messages without reasoning are prefilled as plain text. **Tool-call messages can be selected too** — e.g. to fix the reasoning that preceded a tool call; the tool calls are kept so the conversation tail stays coherent. In the editor: `Enter` (and `Shift+Enter`/`Ctrl+J`) starts a new line, `Escape`/`Ctrl+C` **keeps the draft** and returns to the session tree (re-open the message to continue where you left off), `Ctrl+S` also keeps the draft and returns to the tree (batch-edit several messages, then save from the tree), `Ctrl+G` opens your system editor.
+   Returning to the tree keeps the edited row selected, so you can go straight back in. Edit either section (or both); deleting a section removes that part of the message. Messages without reasoning are prefilled as plain text. **Tool-call messages can be selected too** — e.g. to fix the reasoning that preceded a tool call; the tool calls are kept so the conversation tail stays coherent. In the editor: `Enter` (and `Shift+Enter`/`Ctrl+J`) starts a new line, `Escape`/`Ctrl+C` **keeps the draft** and returns to the session tree (re-open the message to continue where you left off), `Ctrl+S` also keeps the draft and returns to the tree (batch-edit several messages, then save from the tree), `Ctrl+G` opens your system editor.
 4. Keep editing: drafts accumulate in memory — nothing is written to disk until you save. Submitting a message back to its original text removes it from the pending set.
 5. The **save dialog** opens with `Ctrl+S` (in the tree, or in the editor), or with `Escape` in the tree when there are pending edits. It lists every pending edit (before → after) and the commit options — there is no default, you always choose explicitly:
    - **Branch · keep subsequent conversation** — copies the path from the first edited message to the end of the conversation into the same session file, with your edits woven in; the original path stays intact.

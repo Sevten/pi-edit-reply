@@ -1,7 +1,7 @@
 {
   "name": "@sevten/pi-edit-reply",
   "version": "0.2.0",
-  "description": "A pi agent extension that lets you edit an LLM reply in place by creating an edited copy on a new branch, while preserving the original message.",
+  "description": "A pi agent extension for editing conversation messages (text and thinking) in a session tree: batch edits held in memory, then committed as an in-file branch or a forked new session. Originals are always preserved.",
   "keywords": [
     "pi-package",
     "pi",
