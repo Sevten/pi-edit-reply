@@ -737,6 +737,54 @@ type CommitChoice =
 	| "discard";
 
 export default function (pi: ExtensionAPI) {
+	// /switch — navigate the session tree with thinking-only assistant rows
+	// visible (the native /tree hides them, which makes reasoning rounds
+	// unreachable). Same tree, but picking an entry moves the leaf there.
+	pi.registerCommand("switch", {
+		description:
+			"Navigate the session tree incl. thinking-only rows (native /tree hides them)",
+		handler: async (_args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("/switch: agent is busy, wait for it to finish", "warning");
+				return;
+			}
+			const sessionFile = ctx.sessionManager.getSessionFile();
+			if (typeof sessionFile !== "string") {
+				ctx.ui.notify("/switch: this session is not persisted to a file", "warning");
+				return;
+			}
+			const entries = readSessionFile(sessionFile).entries;
+			const leafId = ctx.sessionManager.getLeafId();
+			const tree = withLabels(ctx.sessionManager.getTree(), new Set());
+			if (tree.length === 0) {
+				ctx.ui.notify("/switch: session has no entries", "warning");
+				return;
+			}
+			const target = await ctx.ui.custom<string | undefined>(
+				(tui, theme, _keybindings, done) =>
+					makeTreeSelector(
+						tree,
+						leafId,
+						tui.terminal.rows,
+						(entryId) => done(entryId),
+						() => done(undefined),
+					),
+			);
+			if (target === undefined) {
+				ctx.ui.setStatus("editreply", "switch cancelled");
+				return;
+			}
+			const entry = entries.find((e) => e.id === target);
+			const message = entry ? asMessageEntry(entry) : null;
+			if (!message) {
+				ctx.ui.setStatus("editreply", "picked entry is not a message");
+				return;
+			}
+			await ctx.navigateTree(target, { summarize: false });
+			ctx.ui.setStatus("editreply", undefined);
+		},
+	});
+
 	pi.registerCommand("editreply", {
 		description:
 			"Edit AI replies (text/thinking): batch edits, then commit as a branch or a forked new session",
