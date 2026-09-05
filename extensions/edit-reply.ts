@@ -328,7 +328,7 @@ export function openTallEditor(
 	title: string,
 	prefill: string,
 	visibleLines: number,
-	done: (value: EditorDone | undefined) => void,
+	done: (value: string | undefined) => void,
 ) {
 	// The factory hands us the interactive Theme, but Editor expects an
 	// EditorTheme ({ borderColor, selectList }). getEditorTheme() is not
@@ -353,7 +353,7 @@ export function openTallEditor(
 		new Text(
 			"enter newline  " +
 				keyHint("tui.select.cancel", "keep draft, back") +
-				"  ctrl+s save",
+				"  ctrl+s back",
 			1,
 			0,
 		),
@@ -364,17 +364,14 @@ export function openTallEditor(
 	// Route input. Keys are deliberately unlike pi's default editor:
 	// - Enter inserts a newline so multi-line text can be typed naturally
 	//   (Shift+Enter/Ctrl+J also reach the editor's own newline handling)
-	// - Esc/Ctrl+C keeps the draft and returns to the tree
-	// - Ctrl+S records the draft and opens the save dialog directly
+	// - Esc/Ctrl+C/Ctrl+S keep the draft and return to the tree, so several
+	//   messages can be draft-edited in a row; the save dialog is only ever
+	//   opened from the tree (Esc with pending edits, or Ctrl+S there)
 	(container as unknown as { handleInput: (data: string) => void }).handleInput = (
 		data: string,
 	) => {
-		if (data === "\u0013") {
-			done({ text: editor.getText(), save: true });
-			return;
-		}
-		if (keybindings.matches(data, "tui.select.cancel")) {
-			done({ text: editor.getText() });
+		if (data === "\u0013" || keybindings.matches(data, "tui.select.cancel")) {
+			done(editor.getText());
 			return;
 		}
 		if (data === "\r") {
@@ -720,7 +717,6 @@ class CommitDialog extends Container {
 // ---------------------------------------------------------------------------
 
 type TreeResult = { kind: "edit"; entryId: string } | { kind: "commit" } | undefined;
-type EditorDone = { text: string; save?: boolean } | undefined;
 type CommitChoice =
 	| "branch-tail"
 	| "branch-cut"
@@ -866,7 +862,7 @@ export default function (pi: ExtensionAPI) {
 						tui: TUI,
 						theme: Theme,
 						keybindings: KeybindingsManager,
-						done: (value: EditorDone) => void,
+						done: (value: string | undefined) => void,
 					) =>
 						openTallEditor(
 							tui,
@@ -879,27 +875,21 @@ export default function (pi: ExtensionAPI) {
 							maxVisibleLines,
 							done,
 						);
-					const editorResult = fullscreen
-						? await ctx.ui.custom<EditorDone>(factory, {
+					const edited = fullscreen
+						? await ctx.ui.custom<string | undefined>(factory, {
 								overlay: true,
 								overlayOptions: {
 									anchor: "top-left",
 									width: "100%",
 								},
 							})
-						: await ctx.ui.custom<EditorDone>(factory);
+						: await ctx.ui.custom<string | undefined>(factory);
 
-					if (editorResult === undefined)
-						continue; // cancelled -> back to the tree
-					const edited = editorResult.text;
-					if (edited === prefill) {
-						if (editorResult.save) break editingLoop; // save existing edits
-						continue; // unchanged -> back to the tree
-					}
+					if (edited === undefined) continue; // cancelled -> back to the tree
+					if (edited === prefill) continue; // unchanged -> back to the tree
 					if (edited === originalPrefill) {
 						pending.delete(message.id); // reverted to the original text
 						flash("Edit reverted");
-						if (editorResult.save) break editingLoop;
 						continue;
 					}
 					const { thinking, reply } = parseEdited(edited);
@@ -911,13 +901,11 @@ export default function (pi: ExtensionAPI) {
 						// Tool calls survive on the copy, so a message that still has
 						// them is a valid edit ("clear the reply, keep the call").
 						flash("Nothing left after editing — edit not recorded");
-						if (editorResult.save) break editingLoop;
 						continue;
 					}
 					pending.set(message.id, edited);
 					setPendingStatus();
 					flash("Draft kept (not written yet) — re-open to continue, Ctrl+S to save");
-					if (editorResult.save) break editingLoop; // go straight to the save dialog
 				}
 
 				// --- commit phase -------------------------------------------
