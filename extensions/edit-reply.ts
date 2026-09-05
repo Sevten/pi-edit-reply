@@ -319,7 +319,7 @@ class TallEditor extends Editor {
 	}
 }
 
-function openTallEditor(
+export function openTallEditor(
 	tui: TUI,
 	theme: Theme,
 	keybindings: KeybindingsManager,
@@ -337,9 +337,10 @@ function openTallEditor(
 	};
 	const editor = new TallEditor(tui, editorTheme, visibleLines);
 	editor.setText(prefill);
-	editor.onSubmit = () => {
-		const value = editor.getText();
-		done(value);
+	// NOTE: use the argument — Editor.submitValue() resets its internal state
+	// BEFORE firing onSubmit, so editor.getText() would already be "" here.
+	editor.onSubmit = (text) => {
+		done(text);
 	};
 	const container = new Container();
 	container.addChild(new DynamicBorder());
