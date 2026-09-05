@@ -397,11 +397,24 @@ function makeTreeSelector(
 	terminalRows: number,
 	onSelect: (entryId: string) => void,
 	onCancel: () => void,
+	initialSelectedId?: string | null,
 ): TreeSelectorComponent {
-	const selector = new TreeSelectorComponent(tree, leafId, terminalRows, onSelect, onCancel);
+	const selector = new TreeSelectorComponent(
+		tree,
+		leafId,
+		terminalRows,
+		onSelect,
+		onCancel,
+		undefined,
+		initialSelectedId ?? undefined,
+	);
 	const treeList = selector.getTreeList() as unknown as {
 		hasTextContent: (c: unknown) => boolean;
 		applyFilter: () => void;
+		findNearestVisibleIndex: (entryId: string) => number;
+		selectedIndex: number;
+		lastSelectedId: string | null;
+		filteredNodes: Array<{ node: { entry: { id: string } } }>;
 	};
 	treeList.hasTextContent = (content: unknown) => {
 		if (typeof content === "string") return content.trim().length > 0;
@@ -433,6 +446,15 @@ function makeTreeSelector(
 		return false;
 	};
 	treeList.applyFilter();
+	// The constructor picked the initial selection while thinking-only rows
+	// were still hidden (it walks up to the nearest visible ancestor, e.g. the
+	// user message). Re-target now that the patched filter shows them.
+	if (initialSelectedId) {
+		const idx = treeList.findNearestVisibleIndex(initialSelectedId);
+		treeList.selectedIndex = idx;
+		treeList.lastSelectedId =
+			treeList.filteredNodes[idx]?.node?.entry?.id ?? null;
+	}
 	return selector;
 }
 
@@ -712,6 +734,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const pending = new Map<string, string>();
+			let lastSelectedId: string | null = null; // keep tree selection on return
 			let statusTimer: ReturnType<typeof setTimeout> | undefined;
 			const pendingStatus = () =>
 				pending.size > 0
@@ -766,6 +789,7 @@ export default function (pi: ExtensionAPI) {
 									done({ kind: "edit", entryId });
 								},
 								() => done(pending.size > 0 ? { kind: "commit" } : undefined),
+								lastSelectedId,
 							);
 							// Ctrl+S opens the save dialog directly (same as Esc with
 							// pending edits), so saving has a dedicated, visible key.
@@ -805,6 +829,7 @@ export default function (pi: ExtensionAPI) {
 					const entry = entries.find((e) => e.id === result.entryId);
 					const message = entry ? asMessageEntry(entry) : null;
 					if (!message) continue;
+					lastSelectedId = message.id; // return to the tree with this row selected
 
 					const originalPrefill = buildPrefill(message.message);
 					const prefill = pending.get(message.id) ?? originalPrefill;
