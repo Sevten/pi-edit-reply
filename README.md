@@ -2,7 +2,7 @@
 
 A [pi](https://pi.dev) extension for rewriting AI history:
 
-- **`/editreply`** — batch-edit LLM replies (text and/or their reasoning). Edits are held in memory until you explicitly save, then committed either as an **in-file branch** or as a **forked new session**. The original conversation is always preserved.
+- **`/treeedit`** — batch-edit LLM replies (text and/or their reasoning). Edits are held in memory until you explicitly save, then committed either as an **in-file branch** or as a **forked new session**. The original conversation is always preserved. `Enter` navigates to the picked row (any branch — pi may ask about a branch summary), `Ctrl+E` opens the editor for the selected row, `Ctrl+S` opens the save dialog when edits are pending.
 
 ## Install
 
@@ -12,7 +12,7 @@ pi install npm:@sevten/pi-edit-reply
 
 ## Usage
 
-1. Type `/editreply` (only works while the agent isn't running).
+1. Type `/treeedit` (only works while the agent isn't running).
 2. A **session tree** opens, listing all messages across every branch of the current conversation (same navigation as the built-in `/tree`). Assistant replies that contain reasoning are tagged with a `[thinking]` marker so they are easy to spot — including tool-call rounds whose text is empty (pi's own `/tree` hides those rows; this editor shows them). Rows with unsaved edits are tagged `[edited]`, and the footer shows a pending-edits counter.
    - Selecting an LLM reply (text, thinking, or tool calls) opens the editor.
    - Selecting anything else (your own messages, tool results) shows a transient hint in the footer status bar and leaves the tree open.

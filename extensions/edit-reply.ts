@@ -1,5 +1,6 @@
 /**
- * /editreply — batch-edit AI replies (text and/or thinking), then commit the
+ * /treeedit — batch-edit conversation messages (text and/or thinking), then
+ * commit the
  * edits as either an in-file branch or a forked new session.
  *
  * Flow:
@@ -620,7 +621,7 @@ export function makeLabelEntries(
 }
 
 function writeAtomic(file: string, lines: string[]): void {
-	const tmp = `${file}.editreply.tmp`;
+	const tmp = `${file}.treeedit.tmp`;
 	writeFileSync(tmp, [...lines, ""].join("\n"));
 	renameSync(tmp, file);
 }
@@ -728,7 +729,11 @@ class CommitDialog extends Container {
 // Command
 // ---------------------------------------------------------------------------
 
-type TreeResult = { kind: "edit"; entryId: string } | { kind: "commit" } | undefined;
+type TreeResult =
+	| { kind: "edit"; entryId: string }
+	| { kind: "navigate"; entryId: string }
+	| { kind: "commit" }
+	| undefined;
 type CommitChoice =
 	| "branch-tail"
 	| "branch-cut"
@@ -737,17 +742,17 @@ type CommitChoice =
 	| "discard";
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("editreply", {
+	pi.registerCommand("treeedit", {
 		description:
-			"Edit AI replies (text/thinking): batch edits, then commit as a branch or a forked new session",
+			"Navigate and edit the session tree — a /tree superset that shows thinking rows; edits commit as a branch or a forked new session",
 		handler: async (_args, ctx) => {
 			if (!ctx.isIdle()) {
-				ctx.ui.notify("/editreply: agent is busy, wait for it to finish", "warning");
+				ctx.ui.notify("/treeedit: agent is busy, wait for it to finish", "warning");
 				return;
 			}
 			const sessionFile = ctx.sessionManager.getSessionFile();
 			if (typeof sessionFile !== "string") {
-				ctx.ui.notify("/editreply: this session is not persisted to a file", "warning");
+				ctx.ui.notify("/treeedit: this session is not persisted to a file", "warning");
 				return;
 			}
 
@@ -758,15 +763,15 @@ export default function (pi: ExtensionAPI) {
 				pending.size > 0
 					? `${pending.size} pending edit${pending.size === 1 ? "" : "s"} — Esc opens save options`
 					: undefined;
-			const setPendingStatus = () => ctx.ui.setStatus("editreply", pendingStatus());
+			const setPendingStatus = () => ctx.ui.setStatus("treeedit", pendingStatus());
 			const flash = (msg: string) => {
-				ctx.ui.setStatus("editreply", msg);
+				ctx.ui.setStatus("treeedit", msg);
 				if (statusTimer) clearTimeout(statusTimer);
-				statusTimer = setTimeout(() => ctx.ui.setStatus("editreply", pendingStatus()), 3000);
+				statusTimer = setTimeout(() => ctx.ui.setStatus("treeedit", pendingStatus()), 3000);
 			};
 			const cleanup = () => {
 				if (statusTimer) clearTimeout(statusTimer);
-				ctx.ui.setStatus("editreply", undefined);
+				ctx.ui.setStatus("treeedit", undefined);
 			};
 
 			let switched = false;
@@ -778,57 +783,79 @@ export default function (pi: ExtensionAPI) {
 					const pathIds = new Set(path.map((e) => e.id));
 					const tree = withLabels(ctx.sessionManager.getTree(), new Set(pending.keys()));
 					if (tree.length === 0) {
-						ctx.ui.notify("/editreply: session has no entries", "warning");
+						ctx.ui.notify("/treeedit: session has no entries", "warning");
 						return;
 					}
 
+					// Shared guard for Ctrl+E: only on-path user/assistant messages
+					// with at least one editable part can be opened in the editor.
+					const editGuard = (entryId: string): string | null => {
+						const entry = entries.find((e) => e.id === entryId);
+						const message = entry ? asMessageEntry(entry) : null;
+						if (
+							!message ||
+							(message.message.role !== "assistant" &&
+								message.message.role !== "user") ||
+							(!hasText(message.message) &&
+								!hasThinking(message.message) &&
+								!hasToolCalls(message.message))
+						) {
+							return "Not editable: pick a user or assistant message";
+						}
+						if (!pathIds.has(entryId)) {
+							return "Off the active path — Enter navigates there first";
+						}
+						return null;
+					};
+
 					const result = await ctx.ui.custom<TreeResult>(
 						(tui, theme, _keybindings, done) => {
+							// Enter keeps the native /tree semantics: navigate to the
+							// picked row (any entry, any branch). pi itself asks about
+							// a branch summary when relevant (no summarize override).
 							const selector = makeTreeSelector(
 								tree,
 								ctx.sessionManager.getLeafId(),
 								tui.terminal.rows,
-								(entryId) => {
-									const entry = entries.find((e) => e.id === entryId);
-									const message = entry ? asMessageEntry(entry) : null;
-									if (
-										!message ||
-										(message.message.role !== "assistant" &&
-											message.message.role !== "user") ||
-										(!hasText(message.message) &&
-											!hasThinking(message.message) &&
-											!hasToolCalls(message.message))
-									) {
-										flash("Not editable: pick a user or assistant message");
-										return; // keep the tree open
-									}
-									if (!pathIds.has(entryId)) {
-										flash("Off the active path — /tree to that branch first");
-										return;
-									}
-									done({ kind: "edit", entryId });
-								},
+								(entryId) => done({ kind: "navigate", entryId }),
 								() => done(pending.size > 0 ? { kind: "commit" } : undefined),
 								lastSelectedId,
 							);
-							// Ctrl+S opens the save dialog directly (same as Esc with
-							// pending edits), so saving has a dedicated, visible key.
 							const wrapper = new Container();
 							wrapper.addChild(selector);
-							if (pending.size > 0) {
-								wrapper.addChild(
-									new Text(
-										theme.fg("dim", "Ctrl+S save  ·  Esc exit"),
-										1,
-										0,
+							wrapper.addChild(
+								new Text(
+									theme.fg(
+										"dim",
+										"enter navigate  ·  ctrl+e edit  ·  ctrl+s save  ·  esc exit",
 									),
-								);
-							}
+									1,
+									0,
+								),
+							);
 							(wrapper as unknown as { handleInput: (data: string) => void }).handleInput = (
 								data: string,
 							) => {
 								if (data === "\u0013" && pending.size > 0) {
 									done({ kind: "commit" });
+									return;
+								}
+								if (data === "\u0005") {
+									// Ctrl+E — edit the selected row.
+									const list = selector.getTreeList() as unknown as {
+										lastSelectedId: string | null;
+									};
+									const entryId = list.lastSelectedId;
+									if (!entryId) {
+										flash("Nothing selected");
+										return;
+									}
+									const problem = editGuard(entryId);
+									if (problem) {
+										flash(problem);
+										return; // keep the tree open
+									}
+									done({ kind: "edit", entryId });
 									return;
 								}
 								selector.handleInput(data);
@@ -845,6 +872,30 @@ export default function (pi: ExtensionAPI) {
 
 					if (result === undefined) return; // tree Esc with no pending edits
 					if (result.kind === "commit") break editingLoop;
+
+					if (result.kind === "navigate") {
+						// Draft safety: pending edits stranded on another branch can
+						// never be committed once the leaf moves away.
+						const newPathIds = new Set(
+							buildPath(entries, result.entryId).map((e) => e.id),
+						);
+						const stranded = [...pending.keys()].filter(
+							(id) => !newPathIds.has(id),
+						);
+						if (stranded.length > 0) {
+							const ok = await ctx.ui.confirm(
+								"Navigating away",
+								`${stranded.length} pending edit${stranded.length === 1 ? "" : "s"} ${
+									stranded.length === 1 ? "is" : "are"
+								} on another branch and will become uncommittable. Navigate anyway?`,
+							);
+							if (!ok) continue; // stay in the tree
+							pending.clear();
+							setPendingStatus();
+						}
+						await ctx.navigateTree(result.entryId);
+						continue; // re-open the tree on the (possibly new) path
+					}
 
 					const entry = entries.find((e) => e.id === result.entryId);
 					const message = entry ? asMessageEntry(entry) : null;
@@ -882,8 +933,8 @@ export default function (pi: ExtensionAPI) {
 							theme,
 							keybindings,
 							fullscreen
-								? "Edit AI reply (fullscreen):"
-								: "Edit AI reply:",
+								? "Edit message (fullscreen):"
+								: "Edit message:",
 							prefill,
 							maxVisibleLines,
 							done,
@@ -1016,7 +1067,7 @@ export default function (pi: ExtensionAPI) {
 				cleanup();
 				const clearStatus = async (fresh: {
 					ui: { setStatus: (k: string, v: string | undefined) => void };
-				}) => fresh.ui.setStatus("editreply", undefined);
+				}) => fresh.ui.setStatus("treeedit", undefined);
 
 				if (isFork) {
 					const fork = buildForkSession(sessionFile, copies);
