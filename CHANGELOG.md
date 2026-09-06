@@ -2,8 +2,6 @@
 
 ## 0.2.0 (unreleased)
 
-Changes since 0.1.1. The command is renamed `/editreply` → **`/edittree`**.
-
 ### Added
 
 - **Edit multiple messages in one pass** — open message after message; each edit is held in the tree (`[edited]` tag, pending counter in the footer) and nothing is written until you explicitly save via `Ctrl+S`. The save dialog shows every pending edit (before → after) and offers: commit as an **in-file branch** (original path preserved) or a **forked new session**, each either keeping the conversation after your edits or cutting it at the last edit — or discard everything.
@@ -13,4 +11,5 @@ Changes since 0.1.1. The command is renamed `/editreply` → **`/edittree`**.
 
 ### Changed
 
+- Renamed the command `/editreply` → **`/edittree`**.
 - Editor keys: `Enter` now inserts a newline (it used to submit); `Escape` / `Ctrl+C` / `Ctrl+S` keep the draft and return to the tree so you can continue with the next message; `Ctrl+G` still opens the system editor.

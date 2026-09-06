@@ -1,12 +1,12 @@
 // E2E tests for /edittree. Run:
 //   npx tsc extensions/edit-reply.ts --outDir /tmp/edittree-out --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck --types node
-//   mv /tmp/edittree-out/edit-reply.js /tmp/edittree-out/edit-reply.mjs
+//   
 //   node tests/e2e-test.mjs
 // Requires @earendil-works/pi-coding-agent + @earendil-works/pi-tui to be
 // resolvable from the repo root (npm i, or symlink the global install).
 import { strict as assert } from "node:assert";
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import * as mod from "../out/edit-reply.mjs";
+import * as mod from "../out/edit-reply.js";
 
 let failures = 0;
 const check = (cond, msg) => {
