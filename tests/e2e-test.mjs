@@ -92,8 +92,8 @@ function makeCtx(file, steps) {
   return ctx;
 }
 
-// --- test 1: Esc in the editor discards — nothing staged, nothing written ---
-console.log("test 1: editor Esc discards");
+// --- test 1: Esc in the editor with edits asks, then discards -------------
+console.log("test 1: editor Esc discards via confirm");
 {
   const file = baseSession("t1.jsonl");
   const before = readFileSync(file, "utf8");
@@ -102,7 +102,9 @@ console.log("test 1: editor Esc discards");
     (factory) => new Promise((resolve) => {
       const comp = factory({ terminal: { rows: 24 } }, { fg: (_c, t) => t, bold: (t) => t }, { matches: (d, n) => n === "tui.select.cancel" && d === "\u001b" }, resolve);
       comp.handleInput("X");
-      comp.handleInput("\u001b");
+      comp.handleInput("\u001b"); // edits present → confirm dialog appears
+      comp.handleInput("\u001b[B"); // move to "Discard changes"
+      comp.handleInput("\r"); // confirm discard
     }),
     undefined, // tree again; exit
   ]);

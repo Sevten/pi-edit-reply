@@ -375,41 +375,116 @@ export function openTallEditor(
 	// internal state BEFORE firing onSubmit, so getText() must not be read
 	// from an onSubmit callback.
 	const container = new Container();
-	container.addChild(new DynamicBorder());
-	container.addChild(new Text(keyHint("tui.select.cancel", "discard, back"), 1, 0));
-	container.addChild(new Text(title, 1, 0));
-	container.addChild(new DynamicBorder());
-	container.addChild(editor);
-	container.addChild(new Spacer(1));
-	container.addChild(
-		new Text(
-			"enter newline  " +
-				keyHint("tui.select.cancel", "discard, back") +
-				"  ctrl+s stage, back",
-			1,
-			0,
-		),
-	);
-	container.addChild(new Spacer(1));
-	container.addChild(new DynamicBorder());
+	const cancelHint = keyHint("tui.select.cancel", "discard, back");
+	const buildEditorView = () => {
+		container.clear();
+		container.addChild(new DynamicBorder());
+		container.addChild(new Text(cancelHint, 1, 0));
+		container.addChild(new Text(title, 1, 0));
+		container.addChild(new DynamicBorder());
+		container.addChild(editor);
+		container.addChild(new Spacer(1));
+		container.addChild(
+			new Text(
+				"enter newline  " + cancelHint + "  ctrl+s stage, back",
+				1,
+				0,
+			),
+		);
+		container.addChild(new Spacer(1));
+		container.addChild(new DynamicBorder());
+	};
+
+	// --- discard confirmation ------------------------------------------------
+	// Esc with an untouched buffer exits immediately; Esc with real edits
+	// swaps in a confirm dialog so a stray Esc can't throw away work.
+	let active: "editor" | "confirm" = "editor";
+	let confirmList: SelectList;
+	let confirmFocused = false;
+	const buildConfirmView = () => {
+		const listTheme: SelectListTheme = {
+			selectedPrefix: (text) => theme.fg("accent", text),
+			selectedText: (text) => theme.fg("accent", text),
+			description: (text) => theme.fg("muted", text),
+			scrollInfo: (text) => theme.fg("dim", text),
+			noMatch: (text) => theme.fg("warning", text),
+		};
+		confirmList = new SelectList(
+			[
+				{
+					value: "keep",
+					label: "Keep editing",
+					description: "Return to the editor with your changes intact",
+				},
+				{
+					value: "discard",
+					label: "Discard changes",
+					description: "Throw away the edited text and go back",
+				},
+			],
+			2,
+			listTheme,
+		);
+		confirmList.onSelect = (item) => {
+			if (item.value === "discard") {
+				done(undefined);
+				return;
+			}
+			active = "editor";
+			buildEditorView();
+		};
+		confirmList.onCancel = () => {
+			// Esc in the confirm dialog = keep editing (the safe default).
+			active = "editor";
+			buildEditorView();
+		};
+		container.clear();
+		container.addChild(new DynamicBorder());
+		container.addChild(new Text(theme.fg("warning", "Discard your edits?"), 1, 0));
+		container.addChild(new DynamicBorder());
+		container.addChild(confirmList);
+		container.addChild(new Spacer(1));
+		container.addChild(
+			new Text(
+				theme.fg(
+					"dim",
+					`${keyHint("tui.select.confirm", "confirm")}  ${keyHint("tui.select.cancel", "keep editing")}`,
+				),
+				1,
+				0,
+			),
+		);
+		container.addChild(new DynamicBorder());
+	};
+	buildEditorView();
 
 	// Route input. Keys are deliberately unlike pi's default editor:
 	// - Enter inserts a newline so multi-line text can be typed naturally
 	//   (Shift+Enter/Ctrl+J also reach the editor's own newline handling)
-	// - Esc/Ctrl+C discard the buffer and return to the tree; only Ctrl+S
+	// - Esc/Ctrl+C discard the buffer and return to the tree — but only
+	//   after a confirmation when the buffer was actually modified; Ctrl+S
 	//   stages the edit (pending set), keeping originals untouched until
 	//   the save dialog commits them
 	(container as unknown as { handleInput: (data: string) => void }).handleInput = (
 		data: string,
 	) => {
+		if (active === "confirm") {
+			confirmList.handleInput(data);
+			return;
+		}
 		if (data === "\u0013") {
 			// Ctrl+S: stage the edit and return to the tree.
 			done(editor.getText());
 			return;
 		}
 		if (keybindings.matches(data, "tui.select.cancel")) {
-			// Esc/Ctrl+C: leave without staging.
-			done(undefined);
+			// Esc/Ctrl+C: leave without staging — confirm first if edited.
+			if (editor.getText() === prefill) {
+				done(undefined);
+				return;
+			}
+			active = "confirm";
+			buildConfirmView();
 			return;
 		}
 		if (data === "\r") {
@@ -419,12 +494,14 @@ export function openTallEditor(
 		}
 		editor.handleInput(data);
 	};
-	// Container is not Focusable by itself; forward focus to the inner editor
-	// so the TUI routes keyboard input to it (same as ExtensionEditorComponent).
+	// Container is not Focusable by itself; forward focus to the active inner
+	// component so the TUI routes keyboard input to it (same as
+	// ExtensionEditorComponent).
 	Object.defineProperty(container, "focused", {
-		get: () => editor.focused,
+		get: () => (active === "confirm" ? confirmFocused : editor.focused),
 		set: (value: boolean) => {
 			editor.focused = value;
+			confirmFocused = value;
 		},
 	});
 	return container;
@@ -966,7 +1043,7 @@ export default function (pi: ExtensionAPI) {
 						: await ctx.ui.custom<string | undefined>(factory);
 
 					if (edited === undefined) {
-						flash("Edit discarded — the message is unchanged");
+						flash("Edit discarded");
 						continue; // back to the tree
 					}
 					if (edited === prefill) continue; // unchanged -> back to the tree

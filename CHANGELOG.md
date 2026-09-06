@@ -2,7 +2,7 @@
 
 ## 0.2.0 (unreleased)
 
-Changes since 0.1.1. The command is renamed `/editreply` → **`/edittree`**; branch navigation is left to pi's native `/tree`.
+Changes since 0.1.1. The command is renamed `/editreply` → **`/edittree`**.
 
 ### Added
 
