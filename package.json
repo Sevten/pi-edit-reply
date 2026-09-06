@@ -1,7 +1,7 @@
 {
   "name": "@sevten/pi-edit-reply",
   "version": "0.2.0",
-  "description": "A pi coding agent extension: batch-edit LLM replies and reasoning in a session, commit as an in-file branch or a forked session; originals preserved.",
+  "description": "A pi coding agent extension to rewrite LLM replies and reasoning.",
   "keywords": [
     "pi-package",
     "pi",
