@@ -31,10 +31,9 @@ Type `/edittree` (only while the agent is idle and the session is saved to a fil
 
 ## Notes
 
-- Only messages on the **current active path** can be edited; use native `/tree` to move to another branch first.
-- Tool-call messages can be edited (e.g. to fix the reasoning that preceded a call); the tool calls themselves are kept so the conversation tail stays coherent.
+- Edits work on any branch, but only along a **single chain** at a time: picking a message on a different branch while edits are staged is refused — save the staged edits first (`Ctrl+S`), then start a new `/edittree` pass for that branch. Keep tail copies the entire subtree after the last edit (all sub-branches, on or off the active path); cut tail stops at the last edited message. The dialog descriptions say which.
+- Messages containing tool calls can be opened to edit their reasoning or text (e.g. to fix the reasoning that preceded a call); the tool calls themselves are never modifiable and are copied verbatim so the conversation tail stays coherent. Tool results are not editable.
 - Editing the thinking text clears its cryptographic signature on the copy; pi's provider handles unsigned blocks gracefully.
-- Reloading the session drops any messages you queued with `Alt+Enter`.
 
 ## License
 

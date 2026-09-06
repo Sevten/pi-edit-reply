@@ -45,7 +45,12 @@ import {
 
 // Re-exported for tests and programmatic use.
 export { buildPrefill, parseEdited } from "./lib/content.js";
-export { buildPath, buildForkSession, readSessionFile } from "./lib/session-file.js";
+export {
+	buildPath,
+	buildForkSession,
+	chainConflict,
+	readSessionFile,
+} from "./lib/session-file.js";
 
 import {
 	buildPrefill,
@@ -58,10 +63,11 @@ import { openTallEditor, estimateVisualLines } from "./lib/editor.js";
 import {
 	editedSummary,
 	asMessageEntry,
-	buildCopies,
-	buildPath,
+	buildEditedCopies,
 	buildForkSession,
 	makeLabelEntries,
+	chainConflict,
+	planEditedCommit,
 	readSessionFile,
 	writeAtomic,
 	type FileEntry,
@@ -178,16 +184,14 @@ export default function (pi: ExtensionAPI) {
 				// --- editing loop -------------------------------------------
 				editingLoop: for (;;) {
 					const entries = readSessionFile(sessionFile).entries;
-					const path = buildPath(entries, ctx.sessionManager.getLeafId() ?? "");
-					const pathIds = new Set(path.map((e) => e.id));
 					const tree = withLabels(ctx.sessionManager.getTree(), pending);
 					if (tree.length === 0) {
 						ctx.ui.notify("/edittree: session has no entries", "warning");
 						return;
 					}
 
-					// Only on-path user/assistant messages with at least one
-					// editable part can be opened in the editor.
+					// Any user/assistant message with at least one editable part
+					// can be opened in the editor — on or off the active path.
 					const editGuard = (entryId: string): string | null => {
 						const entry = entries.find((e) => e.id === entryId);
 						const message = entry ? asMessageEntry(entry) : null;
@@ -204,9 +208,12 @@ export default function (pi: ExtensionAPI) {
 							}
 							return "Not editable: pick a user or assistant message";
 						}
-						if (!pathIds.has(entryId)) {
-							return "Off the active path — /tree to that branch first";
-						}
+						const conflict = chainConflict(
+							entries,
+							new Set(pending.keys()),
+							entryId,
+						);
+						if (conflict) return conflict;
 						return null;
 					};
 
@@ -343,35 +350,28 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// --- commit phase -------------------------------------------
-				const { lines } = readSessionFile(sessionFile);
-				const { entries } = readSessionFile(sessionFile);
+				const { lines, entries } = readSessionFile(sessionFile);
 				const leafId = ctx.sessionManager.getLeafId();
 				if (pending.size === 0 || leafId === null) {
 					cleanup();
 					return;
 				}
-				const path = buildPath(entries, leafId);
-				const pendingOnPath = path.filter((e) => pending.has(e.id));
-				if (pendingOnPath.length === 0) {
-					cleanup();
-					return;
-				}
-				const firstIdx = path.findIndex((e) => pending.has(e.id));
-				const lastIdx = path.reduce(
-					(last, e, i) => (pending.has(e.id) ? i : last),
-					-1,
-				);
-				const endLeafIdx = path.length - 1;
-				const hasTail = lastIdx < endLeafIdx;
+				const plan = planEditedCommit(entries, new Set(pending.keys()), leafId);
+				const count = plan.edited.length;
 
 				// Show only the edited (after) content — a before → after diff of
 				// truncated summaries is unreadable, especially for appends.
-				const reviewLines = pendingOnPath.map((e, i) => {
+				const reviewLines = plan.edited.map((e, i) => {
 					const role = asMessageEntry(e)?.message.role ?? "message";
 					return `${i + 1}. ${role}: ${editedSummary(pending.get(e.id)!)}`;
 				});
 
 				const items: SelectItem[] = [];
+				// Keep tail copies the ENTIRE subtree after the last edit —
+				// on-path (the conversation continuation) and off-path (the
+				// edited branch's own continuation, all sub-branches) alike.
+				const lastEditedId = plan.edited[plan.edited.length - 1]!.id;
+				const hasTail = lastEditedId !== leafId || !plan.onOldPath;
 				if (hasTail) {
 					items.push({
 						value: "branch-tail",
@@ -415,7 +415,7 @@ export default function (pi: ExtensionAPI) {
 					(_tui, theme, _keybindings, done) =>
 						new CommitDialog(
 							theme,
-							`Save ${pendingOnPath.length} edited message${pendingOnPath.length === 1 ? "" : "s"}?`,
+							`Save ${count} edited message${count === 1 ? "" : "s"}?`,
 							reviewLines,
 							items,
 							done,
@@ -432,10 +432,16 @@ export default function (pi: ExtensionAPI) {
 
 				const keepTail = choice === "branch-tail" || choice === "fork-tail";
 				const isFork = choice === "fork-tail" || choice === "fork-cut";
-				const endIdx = keepTail ? endLeafIdx : lastIdx;
 
 				const ids = new Set(entries.map((e) => e.id));
-				const { copies, editedCopyIds } = buildCopies(path, firstIdx, endIdx, pending, ids);
+				const { copies, editedCopyIds } = buildEditedCopies(
+					entries,
+					new Set(pending.keys()),
+					keepTail,
+					leafId,
+					ids,
+					pending,
+				);
 				const copyLines = copies.map((e) => JSON.stringify(e));
 
 				// Clean up on the OLD ctx before switching — pi invalidates the

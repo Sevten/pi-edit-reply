@@ -229,5 +229,101 @@ console.log("test 7: helpers");
   check(prefill.startsWith("[thinking]"), "prefill opens with the thinking section");
 }
 
+
+// --- test 8: off-path single-chain edit commits with a cut -----------------
+console.log("test 8: off-path single-chain edit");
+{
+  const file = `${DIR}/t8.jsonl`;
+  const msg = (id, parent, text) => ({ type: "message", id, parentId: parent, timestamp: ts, message: { role: "assistant", content: [{ type: "text", text }], stopReason: "stop", usage } });
+  const lines = [
+    { type: "session", version: 3, id: "3f2504e0-4f89-11d3-9a0c-0305e82c3301", timestamp: ts, cwd: DIR },
+    { type: "message", id: "u1", parentId: null, timestamp: ts, message: { role: "user", content: "hello", usage } },
+    msg("a1", "u1", "A1"),
+    msg("b1", "a1", "B1"), // active leaf branch
+    msg("c1", "a1", "C1"), // off-path sibling branch
+    msg("c2", "c1", "C2"), // tail of that branch
+  ];
+  writeFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  const ctx = makeCtx(file, [
+    { kind: "edit", entryId: "c1" }, // off the active path — allowed
+    (factory) => new Promise((resolve) => {
+      const comp = factory({ terminal: { rows: 24 } }, { fg: (_c, t) => t, bold: (t) => t }, { matches: (d, n) => n === "tui.select.cancel" && d === "\u001b" }, resolve);
+      comp.handleInput("X");
+      comp.handleInput("\u0013");
+    }),
+    { kind: "commit" },
+    "branch-cut",
+  ]);
+  ctx.sessionManager.getLeafId = () => "b1";
+  await handler("", ctx);
+  const all = parse(file);
+  const c1c = all.find((e) => e.type === "message" && e.message.content?.[0]?.text === "C1X");
+  check(c1c && c1c.parentId === "a1", "edited off-path copy forks at the edited message's parent");
+  check(all[all.length - 1].id === c1c.id, "new leaf is the edited copy");
+  check(all.some((e) => e.type === "label" && e.targetId === c1c.id), "edited copy labeled");
+  check(!all.some((e) => e.message?.content?.[0]?.text === "C2" && e.id !== "c2"), "cut tail does not copy the branch tail");
+}
+
+// --- test 8b: off-path keep tail extends to that branch's own leaf ---------
+console.log("test 8b: off-path keep tail");
+{
+  const file = `${DIR}/t8b.jsonl`;
+  const msg = (id, parent, text) => ({ type: "message", id, parentId: parent, timestamp: ts, message: { role: "assistant", content: [{ type: "text", text }], stopReason: "stop", usage } });
+  const lines = [
+    { type: "session", version: 3, id: "3f2504e0-4f89-11d3-9a0c-0305e82c3301", timestamp: ts, cwd: DIR },
+    { type: "message", id: "u1", parentId: null, timestamp: ts, message: { role: "user", content: "hello", usage } },
+    msg("a1", "u1", "A1"),
+    msg("b1", "a1", "B1"),
+    msg("c1", "a1", "C1"),
+    msg("c2", "c1", "C2"),
+    msg("d1", "c1", "D1"), // second sub-branch under the edited message
+  ];
+  writeFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  const ctx = makeCtx(file, [
+    { kind: "edit", entryId: "c1" },
+    (factory) => new Promise((resolve) => {
+      const comp = factory({ terminal: { rows: 24 } }, { fg: (_c, t) => t, bold: (t) => t }, { matches: (d, n) => n === "tui.select.cancel" && d === "\u001b" }, resolve);
+      comp.handleInput("X");
+      comp.handleInput("\u0013");
+    }),
+    { kind: "commit" },
+    "branch-tail",
+  ]);
+  ctx.sessionManager.getLeafId = () => "b1";
+  await handler("", ctx);
+  const all = parse(file);
+  const c2c = all.filter((e) => e.type === "message" && e.message.content?.[0]?.text === "C2" && e.id !== "c2");
+  check(c2c.length === 1, "keep tail copies the branch tail");
+  const c1c = all.find((e) => e.message?.content?.[0]?.text === "C1X");
+  const d1c = all.filter((e) => e.type === "message" && e.message.content?.[0]?.text === "D1" && e.id !== "d1");
+  check(c1c && c2c[0] && c2c[0].parentId === c1c.id, "tail copy hangs off the edited copy");
+  check(d1c.length === 1 && d1c[0].parentId === c1c.id, "sibling sub-branch copied too (full subtree)");
+  check(all[all.length - 1].id === c2c[0].id, "new leaf is the deepest tail copy");
+}
+
+// --- test 9: edits are restricted to a single chain ------------------------
+console.log("test 9: single-chain restriction");
+{
+  const file = `${DIR}/t9.jsonl`;
+  const msg = (id, parent) => ({ type: "message", id, parentId: parent, timestamp: ts, message: { role: "assistant", content: [{ type: "text", text: id }], stopReason: "stop", usage } });
+  const lines = [
+    { type: "session", version: 3, id: "3f2504e0-4f89-11d3-9a0c-0305e82c3301", timestamp: ts, cwd: DIR },
+    { type: "message", id: "u1", parentId: null, timestamp: ts, message: { role: "user", content: "hello", usage } },
+    msg("a1", "u1"),
+    msg("b1", "a1"),
+    msg("c1", "a1"),
+  ];
+  writeFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  const { entries } = mod.readSessionFile(file);
+  const branchHint = (r) => r !== null && r.includes("Different branch");
+  check(mod.chainConflict(entries, new Set(), "c1") === null, "no staged edits — anything goes");
+  check(mod.chainConflict(entries, new Set(["b1"]), "b1") === null, "same message allowed");
+  check(mod.chainConflict(entries, new Set(["b1"]), "c1") !== null, "sibling branch rejected");
+  check(mod.chainConflict(entries, new Set(["b1"]), "a1") === null, "ancestor of a staged edit allowed");
+  check(mod.chainConflict(entries, new Set(["a1"]), "b1") === null, "descendant of a staged edit allowed");
+  check(mod.chainConflict(entries, new Set(["u1"]), "c1") === null, "descendant chain through the root allowed");
+  check(branchHint(mod.chainConflict(entries, new Set(["b1"]), "c1")), "rejection hints to save first");
+}
+
 console.log(failures === 0 ? "\nALL TESTS PASSED" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);
