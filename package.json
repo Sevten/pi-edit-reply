@@ -1,13 +1,21 @@
 {
   "name": "@sevten/pi-edit-reply",
   "version": "0.2.0",
-  "description": "A pi agent extension for editing conversation messages (text and thinking) in a session tree: batch edits held in memory, then committed as an in-file branch or a forked new session. Originals are always preserved.",
+  "description": "Batch-edit LLM replies and reasoning in a pi session, then commit the edits as an in-file branch or a forked session - originals always preserved.",
   "keywords": [
     "pi-package",
     "pi",
     "pi-extension",
-    "edit-reply",
-    "ai-agent"
+    "pi-coding-agent",
+    "ai-agent",
+    "llm",
+    "session",
+    "conversation",
+    "chat-history",
+    "edit",
+    "fork",
+    "branch",
+    "conversation-tree"
   ],
   "license": "MIT",
   "type": "module",
@@ -34,5 +42,9 @@
   "devDependencies": {
     "@types/node": "^26.4.1",
     "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "build": "tsc extensions/edit-reply.ts --outDir out --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck --types node",
+    "test": "npm run build && node tests/e2e-test.mjs"
   }
 }
