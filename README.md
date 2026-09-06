@@ -1,6 +1,6 @@
 # @sevten/pi-edit-reply
 
-A [pi](https://pi.dev) extension for rewriting AI history: batch-edit LLM replies (text and/or their reasoning), then commit the edits as an **in-file branch** or a **forked new session**. The original conversation is always preserved.
+A [pi coding agent](https://pi.dev) extension for rewriting AI history: batch-edit LLM replies (text and/or their reasoning), then commit the edits as an **in-file branch** or a **forked new session**. The original conversation is always preserved.
 
 ## Install
 
