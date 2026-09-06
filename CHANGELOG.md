@@ -13,3 +13,20 @@
 
 - Renamed the command `/editreply` → **`/edittree`**.
 - Editor keys: `Enter` now inserts a newline (it used to submit); `Escape` / `Ctrl+C` / `Ctrl+S` keep the draft and return to the tree so you can continue with the next message; `Ctrl+G` still opens the system editor.
+
+## 0.1.1
+
+Packaging and metadata fixes; no functional changes.
+
+### Fixed
+
+- Mark the scoped package as public (`publishConfig.access: "public"`) so npm publishes succeed.
+- Use the canonical GitHub repo casing in `repository` / `bugs` / `homepage` URLs.
+
+### Changed
+
+- Add `pi-extension` / `ai-agent` keywords; reword the package description and README.
+
+## 0.1.0
+
+Initial release: `/editreply` — edit an LLM reply's text from a session tree; the edited copy becomes the conversation's continuation on a new branch, the original stays in the tree.
