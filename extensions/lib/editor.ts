@@ -5,6 +5,7 @@
 
 import type { KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getSelectListTheme, keyHint } from "@earendil-works/pi-coding-agent";
+import { editInExternalEditor, resolveExternalEditorCommand } from "./external-editor.js";
 import {
 	Container,
 	Editor,
@@ -75,6 +76,31 @@ export function openTallEditor(
 	};
 	const editor = new TallEditor(tui, editorTheme, visibleLines);
 	editor.setText(prefill);
+
+	// Ctrl+G: hand the buffer to the system editor ($VISUAL/$EDITOR, nano as
+	// the fallback), like pi's own editor. The TUI is suspended while the
+	// external editor runs; a re-entrant Ctrl+G while it is already open is
+	// ignored (input still flows to this handler until tui.stop() takes
+	// effect).
+	let externalEditorOpen = false;
+	const openExternalEditor = async () => {
+		if (externalEditorOpen) return;
+		externalEditorOpen = true;
+		tui.stop();
+		try {
+			const result = await editInExternalEditor({
+				command: resolveExternalEditorCommand(),
+				content: editor.getText(),
+			});
+			if (result.status === "complete") {
+				editor.setText(result.content);
+			}
+		} finally {
+			tui.start();
+			tui.requestRender(true);
+			externalEditorOpen = false;
+		}
+	};
 	// NOTE: text flows through `done` below — Editor.submitValue() resets its
 	// internal state BEFORE firing onSubmit, so getText() must not be read
 	// from an onSubmit callback.
@@ -90,7 +116,10 @@ export function openTallEditor(
 		container.addChild(new Spacer(1));
 		container.addChild(
 			new Text(
-				"enter newline  " + cancelHint + "  ctrl+s stage, back",
+				"enter newline  " +
+					cancelHint +
+					"  ctrl+s stage, back  " +
+					keyHint("app.editor.external", "system editor"),
 				1,
 				0,
 			),
@@ -179,6 +208,11 @@ export function openTallEditor(
 		if (data === "\u0013") {
 			// Ctrl+S: stage the edit and return to the tree.
 			done(editor.getText());
+			return;
+		}
+		if (keybindings.matches(data, "app.editor.external")) {
+			// Ctrl+G: open the system editor on the current buffer.
+			void openExternalEditor();
 			return;
 		}
 		if (keybindings.matches(data, "tui.select.cancel")) {
