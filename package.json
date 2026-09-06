@@ -1,6 +1,6 @@
 {
   "name": "@sevten/pi-edit-reply",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A pi coding agent extension to rewrite LLM replies and reasoning.",
   "keywords": [
     "pi-package",

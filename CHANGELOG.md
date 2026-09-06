@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.1 - 2026-09-06
+
+### Added
+
+- **Ctrl+G opens the system editor** inside the message editor (`$VISUAL`/`$EDITOR`, nano as the fallback) — the TUI suspends while it runs, and the result lands back in the edit buffer; the `Esc`/`Ctrl+S` staging flow is unchanged.
+
+## 0.2.0 - 2026-09-06
 
 ### Added
 
@@ -13,7 +19,7 @@
 
 - **Edit on any branch** — messages off the active path no longer require switching via `/tree` first. Edits are limited to a single chain per pass: touching a message on a different branch while edits are staged is refused with a hint to save first and start a new pass for that branch. Keep-tail copies the entire descendant subtree of the last edit (all sub-branches, noted in the dialog); cut-tail stops at the last edited message.
 - Renamed the command `/editreply` → **`/edittree`**.
-- Editor keys: `Enter` now inserts a newline (it used to submit); `Escape` / `Ctrl+C` / `Ctrl+S` keep the draft and return to the tree so you can continue with the next message; `Ctrl+G` still opens the system editor (`$VISUAL`/`$EDITOR`, nano as the fallback) inside the new editor too — the TUI suspends while it runs, and the result lands back in the edit buffer.
+- Editor keys: `Enter` now inserts a newline (it used to submit); `Escape` / `Ctrl+C` / `Ctrl+S` keep the draft and return to the tree so you can continue with the next message.
 
 ## 0.1.1
 
